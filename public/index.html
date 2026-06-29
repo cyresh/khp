@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KHP Attendance</title>
+  <link rel="stylesheet" href="./shared/design-system.css" />
+</head>
+<body>
+  <div class="page" style="max-width: 32rem; padding-top: 3rem;">
+    <div id="college-header-mount"></div>
+    <div style="margin-top: var(--space-5);">
+      <h1>KHP Attendance</h1>
+      <p>Choose which app you need:</p>
+      <div class="stack">
+        <a class="btn btn--full btn--lg" style="background:#1a73e8;" href="./marker/index.html">Staff →</a>
+        <a class="btn btn--full btn--lg" style="background:#d84315;" href="./admin/index.html">Admin →</a>
+      </div>
+
+    </div>
+  </div>
+  <script type="module">
+    import { renderCollegeHeader } from "./shared/college-header.js";
+    renderCollegeHeader(document.getElementById("college-header-mount"));
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "bus-attendance-app",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "deploy": "firebase deploy --only firestore:rules,hosting",
+    "emulators": "firebase emulators:start"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0"
+  }
+}

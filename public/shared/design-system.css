@@ -1,0 +1,1371 @@
+/* shared/design-system.css
+ *
+ * Shared CSS design system for both the marker app and admin app.
+ * Mobile-first by default (marker app is mobile-first per P4); the
+ * admin app overrides specific breakpoints to go desktop-first where
+ * it matters (P6), but shares every token, color, and component
+ * class defined here.
+ *
+ * Accent color is set per-app via a single CSS variable override —
+ * see marker/app.css and admin/app.css, each of which simply sets
+ * --accent (and --accent-dark) before importing this file's
+ * components are used. Do NOT hardcode #1a73e8 or #d83b01 anywhere
+ * outside those two small per-app override files; always reference
+ * var(--accent) so the two apps stay visually distinct from a single
+ * shared source of truth.
+ */
+
+:root {
+  /* ---- Color tokens (neutral / shared across both apps) ---- */
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-text: #1f2329;
+  --color-text-muted: #5f6368;
+  --color-border: #e0e3e7;
+  --color-success-bg: #e6f4ea;
+  --color-success-text: #137333;
+  --color-danger-bg: #fce8e6;
+  --color-danger-text: #c5221f;
+  --color-warning-bg: #fef7e0;
+  --color-warning-text: #b06000;
+  --color-info-bg: #e8f0fe;
+  --color-info-text: #1967d2;
+
+  /* ---- Accent color (OVERRIDDEN per-app — these are fallback/
+     marker defaults so this file alone is still usable standalone
+     for quick previews) ---- */
+  --accent: #1a73e8;
+  --accent-dark: #1558b0;
+  --accent-contrast: #ffffff;
+
+  /* ---- Typography ---- */
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-size-sm: 0.85rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.15rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 2rem;
+  --line-height-base: 1.5;
+
+  /* ---- Spacing scale (used consistently for padding/margins/gaps) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* ---- Shape ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  /* ---- Tap targets ----
+   * P9 calls for "oversized bus roster tap targets" — this is the
+   * single source of truth for that minimum size, used by .btn,
+   * .keypad-key, .roster-row, etc. 44px is the iOS/Android baseline
+   * accessible minimum; we go larger since this is used outdoors,
+   * on a moving bus, often one-handed, sometimes by older staff.
+   */
+  --tap-target-min: 48px;
+  --tap-target-comfortable: 56px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1, h2, h3 {
+  margin: 0 0 var(--space-3) 0;
+  line-height: 1.25;
+}
+h1 { font-size: var(--font-size-2xl); }
+h2 { font-size: var(--font-size-xl); }
+h3 { font-size: var(--font-size-lg); }
+
+p { margin: 0 0 var(--space-3) 0; }
+
+/* ---------------------------------------------------------------- */
+/* Layout primitives                                                  */
+/* ---------------------------------------------------------------- */
+
+.page {
+  max-width: 28rem; /* mobile-first default; admin app overrides per-screen */
+  margin: 0 auto;
+  padding: var(--space-4);
+  padding-bottom: var(--space-8); /* room above any sticky bottom bar */
+}
+
+.page--wide {
+  max-width: 64rem; /* used by admin desktop-first screens, P6+ */
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.stack > * + * {
+  margin-top: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.row--wrap {
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- */
+/* Buttons                                                            */
+/* ---------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease, transform 0.05s ease;
+}
+.btn:hover { background: var(--accent-dark); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.btn--secondary:hover { background: var(--color-bg); }
+
+.btn--danger {
+  background: var(--color-danger-text);
+}
+.btn--danger:hover { background: #a3170f; }
+
+.btn--full {
+  width: 100%;
+}
+
+.btn--lg {
+  min-height: var(--tap-target-comfortable);
+  font-size: var(--font-size-lg);
+  padding: var(--space-4) var(--space-5);
+}
+
+/* ---------------------------------------------------------------- */
+/* Inputs                                                             */
+/* ---------------------------------------------------------------- */
+
+.field {
+  display: block;
+  margin-top: var(--space-3);
+}
+.field label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+.field input,
+.field select {
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Status / message banners                                          */
+/* ---------------------------------------------------------------- */
+
+.msg {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+}
+.msg--ok { background: var(--color-success-bg); color: var(--color-success-text); }
+.msg--err { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.msg--warn { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.msg--holiday { background: #d6d6d6; color: #4a4a4a; }
+.msg--info { background: var(--color-info-bg); color: var(--color-info-text); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.pill--ok { background: var(--color-success-bg); color: var(--color-success-text); }
+.pill--err { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.pill--warn { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.pill--info { background: var(--color-info-bg); color: var(--color-info-text); }
+
+/* ---------------------------------------------------------------- */
+/* Sticky bars (used by P4's counter bar, P6's dashboard summary)     */
+/* ---------------------------------------------------------------- */
+
+.sticky-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+}
+
+.status {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}
+
+/* ---------------------------------------------------------------- */
+/* College header (shown on every screen, both apps)                 */
+/* ---------------------------------------------------------------- */
+
+.college-header {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.college-header__logo {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.college-header__logo--compact {
+  width: 32px;
+  height: 32px;
+}
+.college-header__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.college-header__name {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+  color: var(--accent-dark);
+  line-height: 1;
+}
+.college-header--compact .college-header__name {
+  font-size: var(--font-size-base);
+}
+.college-header__sub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.college-header__phones {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+}
+.college-header__phones::before {
+  content: "📞";
+  font-size: var(--font-size-sm);
+}
+.college-header__phone {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.college-header__phone-sep {
+  font-size: var(--font-size-sm);
+  color: var(--color-border);
+  margin: 0 var(--space-1);
+}
+.college-header__website {
+  font-size: var(--font-size-sm);
+  color: #1f6feb;
+  line-height: 1.3;
+}
+.college-header--loading .college-header__name,
+.college-header--error .college-header__name {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- */
+/* PIN login / numeric keypad                                        */
+/* ---------------------------------------------------------------- */
+
+.pin-login {
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+.pin-login__dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+.pin-login__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background: transparent;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+.pin-login__dot--filled {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+.keypad--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.keypad__key {
+  min-height: var(--tap-target-comfortable);
+  font-size: var(--font-size-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+.keypad__key:active {
+  background: var(--color-bg);
+  transform: scale(0.97);
+}
+.keypad__key--backspace {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+}
+.keypad__key--submit {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+.keypad__key--submit:active {
+  background: var(--accent-dark);
+}
+
+/* ---------------------------------------------------------------- */
+/* Scope picker (home screen, when marker has multiple scopes)       */
+/* ---------------------------------------------------------------- */
+
+.scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.scope-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--tap-target-comfortable);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+.scope-list__item:active {
+  background: var(--color-bg);
+}
+
+/* ---------------------------------------------------------------- */
+/* Session toggle                                                     */
+/* ---------------------------------------------------------------- */
+
+.session-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.session-toggle__btn {
+  min-height: var(--tap-target-comfortable);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.session-toggle__btn--active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* ---------------------------------------------------------------- */
+/* Roster: stop groups, student rows, status toggle                  */
+/* ---------------------------------------------------------------- */
+
+.stop-header {
+  position: sticky;
+  top: 58px;
+  background: var(--color-bg);
+  padding: var(--space-2) var(--space-1);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  z-index: 5;
+}
+
+.roster-row-wrap {
+  margin-bottom: var(--space-3); /* gap between each student block (card + remarks) */
+}
+.roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-target-comfortable);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 0; /* no gap here — remarks box attaches directly below */
+  cursor: pointer;
+  user-select: none;
+}
+.roster-row--absent {
+  background: var(--color-danger-bg);
+  border-color: #f3c2bf;
+  /* Square off bottom corners when remarks box is shown below */
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+.roster-row__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.roster-row__name {
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roster-row__regno {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.roster-row__branch {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+.roster-row__status {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  min-width: 5.5rem;
+  text-align: center;
+}
+.roster-row__status--present {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+.roster-row__status--absent {
+  background: var(--color-danger-text);
+  color: white;
+}
+
+.roster-row__remarks {
+  margin-top: 0;
+  width: 100%;
+}
+.roster-row__remarks input {
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-top: none;            /* merges flush with the card above */
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-color: #f3c2bf;       /* matches the absent card border */
+  background: var(--color-danger-bg);
+  font-size: var(--font-size-sm);
+}
+
+/* ---------------------------------------------------------------- */
+/* Sticky counter bar contents                                       */
+/* ---------------------------------------------------------------- */
+
+.counter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.counter-bar__counts {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.counter-bar__count--present { color: var(--color-success-text); }
+.counter-bar__count--absent { color: var(--color-danger-text); }
+.counter-bar__count--total { color: var(--color-text-muted); }
+
+.locked-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-3);
+}
+
+/* ---------------------------------------------------------------- */
+/* Breakpoints                                                        */
+/* ----------------------------------------------------------------
+ * Mobile-first base styles apply everywhere by default (correct for
+ * the marker app, P4-P5). The admin app (P6-P8) opts into a wider
+ * desktop layout above 768px via .page--wide (set on the page
+ * container in admin screens) plus this single breakpoint, rather
+ * than maintaining a parallel set of admin-only base styles.
+ * ---------------------------------------------------------------- */
+@media (min-width: 768px) {
+  .page--wide {
+    padding: var(--space-6);
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* P5: Summary screens (daily + monthly)                             */
+/* ---------------------------------------------------------------- */
+
+/* Tab bar */
+.summary-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.summary-tab {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: border-color 0.15s, color 0.15s;
+}
+.summary-tab--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--color-info-bg);
+}
+
+.summary-content {
+  /* scrollable area under the tabs */
+}
+
+.summary-meta {
+  margin-bottom: var(--space-3);
+}
+
+/* Shared table wrapper — horizontal scroll for wide grids */
+.summary-table-wrap,
+.monthly-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: var(--space-4);
+}
+
+/* Base table */
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.summary-table th,
+.summary-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  white-space: nowrap;
+}
+.summary-table thead th {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.summary-table tfoot td {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+}
+.summary-row--absent {
+  background: var(--color-danger-bg);
+}
+.summary-status {
+  font-weight: 700;
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  display: inline-block;
+  min-width: 5rem;
+  text-align: center;
+}
+.summary-status--present {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+.summary-status--absent {
+  background: var(--color-danger-text);
+  color: white;
+}
+
+/* Monthly grid specifics */
+.monthly-table {
+  font-size: 0.78rem;
+}
+.monthly-col--name { min-width: 10rem; white-space: normal; padding-left: var(--space-3); }
+.monthly-col--reg  { min-width: 6rem; }
+.monthly-col--day  { min-width: 1.8rem; text-align: center; padding: var(--space-1); }
+.monthly-col--total { min-width: 2rem; text-align: center; font-weight: 700; }
+.monthly-col--total:last-child { padding-right: var(--space-3); }
+.monthly-cell--present { color: var(--color-success-text); font-weight: 700; text-align: center; }
+.monthly-cell--absent  { color: var(--color-danger-text);  font-weight: 700; text-align: center; }
+.monthly-cell--none    { color: var(--color-text-muted);   text-align: center; }
+.monthly-pct--low { color: var(--color-danger-text); font-weight: 700; }
+.monthly-col--holiday,
+.monthly-cell--holiday {
+  background: #d6d6d6;
+  color: #6b6b6b;
+  text-align: center;
+  font-weight: 700;
+  cursor: help;
+}
+
+/* Month nav */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.month-nav__btn {
+  min-height: auto;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-lg);
+}
+.month-nav__label {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  min-width: 10rem;
+  text-align: center;
+}
+
+/* Date nav — same visual pattern as month-nav, used on every Daily
+   tab (class/bus/hostel marker summaries) so navigation feels
+   consistent across the whole app regardless of scope. */
+.date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.date-nav__btn {
+  min-height: auto;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-lg);
+}
+.date-nav__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.date-nav__label {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  min-width: 10rem;
+  text-align: center;
+}
+
+/* Action buttons row */
+.summary-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding-bottom: var(--space-6);
+}
+.summary-actions .btn {
+  flex: 1;
+  min-width: 10rem;
+}
+
+/* WhatsApp button variant */
+.btn--whatsapp {
+  background: #25d366;
+  color: white;
+  border-color: #1da851;
+}
+.btn--whatsapp:hover,
+.btn--whatsapp:focus {
+  background: #1da851;
+}
+
+/* ---------------------------------------------------------------- */
+/* P7: Database management screens                                   */
+/* ---------------------------------------------------------------- */
+
+/* Side-nav layout */
+.db-layout {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+.db-sidenav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 11rem;
+  flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--space-4) + 56px); /* below admin top nav */
+}
+.db-sidenav__btn {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.db-sidenav__btn:hover { background: var(--color-bg); color: var(--color-text); }
+.db-sidenav__btn--active { background: var(--color-info-bg); color: var(--accent); border-color: var(--accent); }
+.db-content { flex: 1; min-width: 0; }
+
+/* On mobile, collapse to top tabs */
+@media (max-width: 600px) {
+  .db-layout { flex-direction: column; }
+  .db-sidenav {
+    flex-direction: row;
+    overflow-x: auto;
+    min-width: 0;
+    width: 100%;
+    position: static;
+    padding-bottom: var(--space-2);
+  }
+  .db-sidenav__btn { white-space: nowrap; flex-shrink: 0; }
+}
+
+/* File dropzone */
+.dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--color-surface);
+  margin: var(--space-4) 0;
+}
+.dropzone:hover, .dropzone--over {
+  border-color: var(--accent);
+  background: var(--color-info-bg);
+}
+.dropzone__icon { font-size: 2.5rem; margin-bottom: var(--space-3); }
+.dropzone__text { font-size: var(--font-size-base); color: var(--color-text-muted); }
+.dropzone__text span { color: var(--accent); text-decoration: underline; }
+
+/* Progress bar */
+.progress-wrap {
+  height: 0.75rem;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: var(--space-4) 0;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
+/* Preview diff summary */
+.preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-3); }
+.diff-counts { display: flex; gap: var(--space-4); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.diff-count { font-weight: 700; font-size: var(--font-size-base); }
+.diff-count--added   { color: var(--color-success-text); }
+.diff-count--updated { color: var(--color-warning-text); }
+.diff-count--removed { color: var(--color-danger-text); }
+
+/* Mismatch item */
+.mismatch-item {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mismatch-item:last-child { border-bottom: none; }
+.mismatch-select { max-width: 28rem; }
+
+/* Section header with action button */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* Student search row */
+.student-search-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+.student-row--inactive { opacity: 0.55; }
+
+/* Form rows */
+.form-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.form-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  min-width: 8rem;
+  padding-top: 0.45rem;
+}
+.student-form { max-width: 36rem; }
+.checkbox-label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); cursor: pointer; white-space: nowrap; }
+
+/* Stop inputs */
+.stop-input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  background: var(--color-surface);
+  width: 100%;
+}
+.stop-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ================================================================
+   P8: User Manager
+   ================================================================ */
+
+/* Form field vertical stack (used in user-manager forms) */
+.form-field {
+  margin-bottom: var(--space-4);
+}
+.form-field .form-label {
+  display: block;
+  min-width: 0;
+  margin-bottom: var(--space-1);
+  padding-top: 0;
+}
+.form-hint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+/* PIN input row (input + generate button side by side) */
+.pin-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.pin-input {
+  font-family: monospace;
+  letter-spacing: 0.25em;
+  font-size: var(--font-size-lg);
+  max-width: 160px;
+}
+
+/* Role badge */
+.role-badge {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.role-badge--admin  { background: #fff3e0; color: #e65100; }
+.role-badge--marker  { background: var(--color-surface-raised); color: var(--color-text-muted); }
+.role-badge--manager { background: #e8f5e9; color: #2e7d32; }
+
+/* Active toggle */
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-wrap input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+.toggle-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Inactive row dimming */
+.row--inactive td { opacity: 0.5; }
+.row--inactive .toggle-wrap { opacity: 1; }
+
+/* Editing row highlight */
+.row--editing td { background: var(--color-surface-raised); }
+
+/* Small action button */
+.btn--sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+/* Scope checklist */
+.scope-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+}
+.scope-check-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* Profile rows */
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-3);
+}
+.profile-row:last-child { border-bottom: none; }
+
+/* Pin display reveal box */
+.pin-display {
+  margin-top: var(--space-3);
+}
+
+/* ================================================================ */
+/* P9: Polish — locked-banner admin variant, roster tap targets,    */
+/* dash-badge, finalize controls                                     */
+/* ================================================================ */
+
+/* Admin-variant locked banner (wider, flex row with override btn) */
+.locked-banner--admin {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-left: 4px solid #b45309;
+}
+
+/* Dashboard locked badge */
+.dash-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85em;
+  margin-left: var(--space-1);
+  opacity: 0.85;
+}
+.dash-badge--locked {
+  /* inherits emoji rendering — no extra style needed */
+}
+
+/* ---- Roster rows: bigger tap targets on mobile ---- */
+/* Already 44px min via --touch-target; this ensures the status
+   pill is clearly tappable and the row feels comfortable on a bus. */
+.roster-row {
+  min-height: 56px !important; /* larger than the 44px baseline */
+}
+
+.roster-row__name {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.roster-row__status {
+  min-width: 72px;
+  text-align: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.02em;
+}
+
+/* Stop header — sticky just below the marker-top-bar only
+   (college header scrolls away). Top bar padding + two text lines ≈ 58px. */
+.stop-header {
+  position: sticky;
+  top: 58px;
+  z-index: 5;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-top: 0;
+  scroll-margin-top: 72px;
+}
+
+/* Bus stop headers get accent blue + a left accent bar */
+.stop-header--bus {
+  color: var(--accent);
+  background: #e8f0fe;
+  border-color: #c5d8fc;
+  border-left: 3px solid var(--accent);
+}
+
+/* Wrapper for each stop — provides gap between stop sections */
+.stop-group {
+  margin-top: var(--space-4);
+}
+.stop-group:first-child {
+  margin-top: 0;
+}
+.stop-group__students {
+  padding-top: var(--space-2);
+}
+
+/* Empty-roster friendly message */
+.msg--roster-empty {
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+}
+.msg--roster-empty .roster-empty__icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: var(--space-3);
+}
+.msg--roster-empty .roster-empty__title {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+  margin-bottom: var(--space-2);
+}
+.msg--roster-empty .roster-empty__hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Finalize-day confirmation area */
+#finalize-msg .msg {
+  margin-bottom: var(--space-3);
+}
+
+/* ── User Manager table overrides ──────────────────────────────────── */
+/* The global .summary-table forces white-space:nowrap which makes the
+   Scope(s) column blow out on users with many scopes. Override here. */
+.user-manager-table td,
+.user-manager-table th {
+  vertical-align: middle;
+}
+
+/* ── Marker app — redesigned top bar ──────────────────────────────── */
+.marker-top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: var(--accent-contrast);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+}
+.marker-top-bar__left {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.marker-top-bar__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.marker-top-bar__title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.marker-top-bar__title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.marker-top-bar__date {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.80;
+  margin-top: 1px;
+}
+.marker-top-bar__back-btn {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: var(--accent-contrast);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.marker-top-bar__back-btn:hover { background: rgba(255,255,255,0.28); }
+.marker-top-bar__summary-btn {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: var(--accent-contrast);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.marker-top-bar__summary-btn:hover { background: rgba(255,255,255,0.28); }
+.marker-top-bar__logout-btn {
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.85);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.marker-top-bar__logout-btn:hover { background: rgba(255,255,255,0.20); }
+
+/* ── Marker app — redesigned bottom bar ───────────────────────────── */
+.marker-bottom-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+  padding: var(--space-3) var(--space-4);
+}
+.marker-bottom-bar__counts {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+.marker-bottom-bar__stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-1);
+  gap: 2px;
+}
+.marker-bottom-bar__stat-num {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.marker-bottom-bar__stat-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+.marker-bottom-bar__stat--present .marker-bottom-bar__stat-num { color: #0d5c28; }
+.marker-bottom-bar__stat--present .marker-bottom-bar__stat-label { color: #0d5c28; }
+.marker-bottom-bar__stat--absent  .marker-bottom-bar__stat-num { color: #9e1b18; }
+.marker-bottom-bar__stat--absent  .marker-bottom-bar__stat-label { color: #9e1b18; }
+.marker-bottom-bar__stat--total   .marker-bottom-bar__stat-num { color: var(--color-text); }
+.marker-bottom-bar__stat--total   .marker-bottom-bar__stat-label { color: var(--color-text-muted); }
+.marker-bottom-bar__divider {
+  width: 1px;
+  background: var(--color-border);
+  margin: var(--space-2) 0;
+}
+.marker-bottom-bar__save-btn {
+  width: 100%;
+  padding: var(--space-3);
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: opacity 0.15s, transform 0.1s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.marker-bottom-bar__save-btn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+.marker-bottom-bar__save-btn:disabled {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+/* Post-save success state */
+.marker-bottom-bar__saved {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.marker-bottom-bar__saved-msg {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: #0d5c28;
+  background: #e6f4ea;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+.marker-bottom-bar__saved-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+.marker-bottom-bar__action-btn {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: var(--accent-contrast);
+  transition: opacity 0.15s;
+}
+.marker-bottom-bar__action-btn:hover { opacity: 0.88; }
+.marker-bottom-bar__action-btn--secondary {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.marker-bottom-bar__action-btn--secondary:hover { background: var(--color-surface-raised); }

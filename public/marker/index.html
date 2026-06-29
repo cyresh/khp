@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KHTPC Marker</title>
+  <meta name="theme-color" content="#1a73e8" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="../shared/design-system.css" />
+  <style>
+    :root { --accent: #1a73e8; --accent-dark: #14559e; --accent-contrast: #ffffff; }
+    .login-screen { display: flex; flex-direction: column; min-height: 100vh; }
+    .login-screen__body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: var(--space-4); }
+    .app-shell { display: none; }
+  </style>
+</head>
+<body>
+  <div id="login-screen" class="login-screen">
+    <div id="college-header-mount"></div>
+    <div class="login-screen__body">
+      <h2 style="text-align:center;">Marker Login</h2>
+      <div id="pin-login-mount"></div>
+    </div>
+  </div>
+
+  <div id="app-shell" class="app-shell">
+    <div id="college-header-mount-2"></div>
+    <div id="marker-app-mount"></div>
+  </div>
+
+  <script type="module">
+    import { initFirebase } from "../shared/firebase-init.js";
+    import { loginWithPin, logout, onAuthChange } from "../shared/auth.js";
+    import { renderCollegeHeader } from "../shared/college-header.js";
+    import { mountPinLogin } from "../shared/pin-keypad.js";
+    import { mountMarkerApp } from "./app.js";
+    import { mountOfflineBanner } from "../shared/offline-banner.js";
+
+    // Must run before any login/auth function above is actually
+    // CALLED — see shared/firebase-init.js for why naming this app
+    // "marker" gives it its own Auth session, independent of the
+    // admin app's, even on the same device.
+    initFirebase("marker");
+
+    mountOfflineBanner();
+
+    const loginScreen = document.getElementById("login-screen");
+    const appShell = document.getElementById("app-shell");
+    const markerAppMount = document.getElementById("marker-app-mount");
+
+    renderCollegeHeader(document.getElementById("college-header-mount"), { compact: true });
+    renderCollegeHeader(document.getElementById("college-header-mount-2"), { compact: true });
+
+    const pinLogin = mountPinLogin(document.getElementById("pin-login-mount"), {
+      pinLength: 6,
+      staffIdPlaceholder: "e.g. mech, cse, bus16",
+      onSubmit: async ({ staffId, pin }) => {
+        await loginWithPin(staffId, pin);
+      },
+    });
+
+    let mountedForUid = null;
+    let activeListenerUnsub = null;
+
+    function stopActiveListener() {
+      if (activeListenerUnsub) {
+        activeListenerUnsub();
+        activeListenerUnsub = null;
+      }
+    }
+
+    // Watches this user's own profile doc for as long as they're signed
+    // in. If an admin resets their PIN or deactivates them while this
+    // tab stays open, `active` flips to false in Firestore — without
+    // this listener the already-open session would just keep working
+    // until the browser session naturally expires, since Firebase Auth
+    // sessions persist locally and aren't auto-revoked by adminResetPin()
+    // / setUserActive() (no Cloud Functions on the Spark plan to force
+    // that server-side).
+    async function watchOwnActiveStatus(uid) {
+      const { db } = await import("../shared/firebase-init.js");
+      const { doc, onSnapshot } = await import(
+        "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"
+      );
+      stopActiveListener();
+      activeListenerUnsub = onSnapshot(doc(db, "users", uid), (snap) => {
+        if (!snap.exists() || snap.data().active === false) {
+          stopActiveListener();
+          logout();
+        }
+      });
+    }
+
+    onAuthChange((user) => {
+      loginScreen.style.display = user ? "none" : "flex";
+      appShell.style.display = user ? "block" : "none";
+      if (user && mountedForUid !== user.uid) {
+        mountedForUid = user.uid;
+        pinLogin?.destroy(); // P9 fix: stop the login keypad's global
+                              // keydown listener from stealing digit/
+                              // backspace input meant for in-app fields.
+        watchOwnActiveStatus(user.uid);
+        mountMarkerApp(markerAppMount, user, { onLogout: () => logout() }).catch((err) => {
+          markerAppMount.innerHTML = `<div class="page"><div class="msg msg--err">${err.message}</div></div>`;
+        });
+      }
+      if (!user) {
+        mountedForUid = null;
+        stopActiveListener();
+        markerAppMount.innerHTML = "";
+      }
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch((err) => {
+        console.warn("Service worker registration failed:", err);
+      });
+    }
+  </script>
+</body>
+</html>

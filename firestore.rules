@@ -1,0 +1,165 @@
+rules_version = '2';
+
+// =====================================================================
+// PHASE 1 RULES — auth/bootstrap/lockout only.
+// Every other collection (college, buses, classes, students,
+// attendanceRecords...) is implicitly DENIED by the catch-all at the
+// bottom until P2/P3 add their own match blocks above it.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && myProfile().role == 'admin'
+        && myProfile().active == true;
+    }
+
+    function isBootstrapped() {
+      return exists(/databases/$(database)/documents/meta/bootstrap)
+        && get(/databases/$(database)/documents/meta/bootstrap).data.bootstrapped == true;
+    }
+
+    // ---- Import stats snapshot (written by admin after each Excel import) --
+    match /meta/lastImportStats {
+      allow get: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- One-time bootstrap flag ----------------------------------
+    // Can only ever be CREATED (never updated/deleted), and only with
+    // bootstrapped == true. Firestore only allows a "create" against a
+    // path that doesn't already hold a document, so this is naturally
+    // a write-once flag with no way to flip it back to false.
+    match /meta/bootstrap {
+      allow get: if true;
+      allow create: if isSignedIn() && request.resource.data.bootstrapped == true;
+      allow update, delete: if false;
+    }
+
+    // ---- staffId -> {uid, authVersion, active} lookup -------------
+    // Needed so the login screen can resolve a staffId to a Firebase
+    // Auth email/authVersion BEFORE the user is signed in. Contains no
+    // secrets (no PIN/password material), so public `get` is fine;
+    // `list` stays blocked to prevent enumerating every staff ID.
+    match /staffIndex/{staffId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if (!isBootstrapped() && isSignedIn()) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ---- Staff profile docs ----------------------------------------
+    // PIN/password itself is never stored here — Firebase Auth owns
+    // that. This doc only holds role/scope/status metadata.
+    match /users/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if (!isBootstrapped() && request.auth.uid == uid && request.resource.data.role == 'admin')
+                     || isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false; // deactivate via `active:false`, never hard-delete
+    }
+
+    // ---- Soft, app-enforced login lockout ---------------------------
+    // NOTE: this is a convention enforced by the app, not a guarantee.
+    // Without Cloud Functions there is no trusted server to gate
+    // Firebase Auth sign-in attempts directly. See README "Known
+    // limitations" before relying on this for strong brute-force
+    // protection.
+    match /loginAttempts/{staffId} {
+      allow get: if true;
+      allow create: if request.resource.data.failCount is int && request.resource.data.failCount <= 1;
+      allow update: if request.resource.data.failCount == 0
+                     || request.resource.data.failCount == resource.data.failCount + 1;
+      allow delete: if false;
+    }
+
+    // ---- College info (single doc) ----------------------------------
+    // Shown on every screen via the header component (P3). Readable
+    // by any signed-in staff member; only admins write it (via the
+    // Excel import pipeline or the dedicated college-info editor, P7).
+    match /college/{docId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Buses (one doc per bus, busId like "bus_11", "cruiser_21") --
+    // Readable by any signed-in staff member (markers need stop lists
+    // for their roster screen); only admins write via import or the
+    // bus editor (P7).
+    match /buses/{busId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- Classes (fully derived from student data, never hand- ------
+    // maintained) -------------------------------------------------------
+    match /classes/{classId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- Students (one doc per student, keyed by Reg. No.) -----------
+    // Readable by any signed-in staff member (markers need rosters for
+    // their assigned scope); only admins write via import or manual
+    // add/edit/deactivate (P7). Hard delete is never allowed — a
+    // removed-from-Excel student is marked inactive instead, so
+    // historical attendance records stay meaningful.
+    match /students/{regNo} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---- Attendance records (one doc per category+scope+date[+session]) --
+    // Any signed-in staff member can read all records (matches the
+    // broad-trust pattern used everywhere else in this app) and can
+    // create/update a record as long as it is NOT locked. Once
+    // locked == true (set by P9's nightly Cloud Function or an
+    // admin's explicit "Finalize" action), only an admin can still
+    // edit it — this is the "show locked state clearly, allow admin
+    // override" requirement from P9, enforced here from P4 onward so
+    // the rule exists before any UI that depends on it.
+    match /attendanceRecords/{recordId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.locked != true || isAdmin());
+      allow delete: if false;
+    }
+
+    // ---- Holidays (one doc per category+date, e.g. "class_2026-06-20") --
+    // Per-category calendar (bus/hostel/class each have their own), so
+    // e.g. classes can be off while buses still run. Readable by any
+    // signed-in staff member (markers need to check their own category
+    // before the PIN-keypad roster screen, admin Monthly view needs to
+    // grey out columns); only admins create/edit/delete via the
+    // Database > Holidays screen.
+    match /holidays/{holidayId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- Everything not explicitly allowed above is denied ---------
+    // Later phases will add their own match blocks above this line.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
