@@ -32,11 +32,18 @@
 
   <script type="module">
     import { initFirebase } from "../shared/firebase-init.js";
-    import { loginWithPin, logout, onAuthChange } from "../shared/auth.js";
+    import { loginWithPin, signInWithStoredSecret, logout, onAuthChange } from "../shared/auth.js";
     import { renderCollegeHeader } from "../shared/college-header.js";
     import { mountPinLogin } from "../shared/pin-keypad.js";
     import { mountMarkerApp } from "./app.js";
     import { mountOfflineBanner } from "../shared/offline-banner.js";
+    import {
+      getLastStaffId, setLastStaffId,
+      isPlatformAuthenticatorAvailable, getSavedBiometric,
+      unlockWithBiometric, clearSavedBiometric, maybeOfferBiometricEnroll,
+    } from "../shared/biometric-auth.js";
+
+    const APP_NAME = "marker";
 
     // Must run before any login/auth function above is actually
     // CALLED — see shared/firebase-init.js for why naming this app
@@ -53,14 +60,12 @@
     renderCollegeHeader(document.getElementById("college-header-mount"), { compact: true });
     renderCollegeHeader(document.getElementById("college-header-mount-2"), { compact: true });
 
-    const pinLogin = mountPinLogin(document.getElementById("pin-login-mount"), {
-      pinLength: 6,
-      staffIdPlaceholder: "e.g. mech, cse, bus16",
-      onSubmit: async ({ staffId, pin }) => {
-        await loginWithPin(staffId, pin);
-      },
-    });
-
+    // Holds {staffId, name, email, password} from the most recent
+    // manual PIN login, so the fingerprint-enrollment banner can be
+    // offered once the app shell is mounted. Left null after a
+    // biometric login (already enabled) or once consumed.
+    let pendingBiometricOffer = null;
+    let pinLogin = null;
     let mountedForUid = null;
     let activeListenerUnsub = null;
 
@@ -93,25 +98,69 @@
       });
     }
 
-    onAuthChange((user) => {
-      loginScreen.style.display = user ? "none" : "flex";
-      appShell.style.display = user ? "block" : "none";
-      if (user && mountedForUid !== user.uid) {
-        mountedForUid = user.uid;
-        pinLogin?.destroy(); // P9 fix: stop the login keypad's global
-                              // keydown listener from stealing digit/
-                              // backspace input meant for in-app fields.
-        watchOwnActiveStatus(user.uid);
-        mountMarkerApp(markerAppMount, user, { onLogout: () => logout() }).catch((err) => {
-          markerAppMount.innerHTML = `<div class="page"><div class="msg msg--err">${err.message}</div></div>`;
-        });
-      }
-      if (!user) {
-        mountedForUid = null;
-        stopActiveListener();
-        markerAppMount.innerHTML = "";
-      }
-    });
+    // Wrapped in an async IIFE (rather than top-level await) so this
+    // still parses and runs on older module-supporting browsers that
+    // don't support top-level await.
+    (async () => {
+      const biometricAvailable = await isPlatformAuthenticatorAvailable();
+
+      pinLogin = mountPinLogin(document.getElementById("pin-login-mount"), {
+        pinLength: 6,
+        staffIdPlaceholder: "e.g. mech, cse, bus16",
+        initialStaffId: getLastStaffId(APP_NAME),
+        biometric: {
+          available: biometricAvailable && !!getSavedBiometric(APP_NAME),
+          onUse: async () => {
+            let secret;
+            try {
+              secret = await unlockWithBiometric(APP_NAME);
+            } catch (err) {
+              throw new Error(err.message || "Fingerprint check failed.");
+            }
+            try {
+              await signInWithStoredSecret(secret.email, secret.password);
+              setLastStaffId(APP_NAME, secret.staffId);
+            } catch (err) {
+              // Saved secret no longer works (PIN was reset, account
+              // deactivated, etc.) — clear it so the fingerprint button
+              // stops offering a dead end, and fall back to PIN login.
+              clearSavedBiometric(APP_NAME);
+              throw new Error("Saved fingerprint login is no longer valid. Please login with your PIN.");
+            }
+          },
+        },
+        onSubmit: async ({ staffId, pin }) => {
+          const { profile, secret } = await loginWithPin(staffId, pin);
+          setLastStaffId(APP_NAME, profile.staffId || staffId);
+          pendingBiometricOffer = { staffId: profile.staffId || staffId, name: profile.name, ...secret };
+        },
+      });
+
+      onAuthChange((user) => {
+        loginScreen.style.display = user ? "none" : "flex";
+        appShell.style.display = user ? "block" : "none";
+        if (user && mountedForUid !== user.uid) {
+          mountedForUid = user.uid;
+          pinLogin?.destroy(); // P9 fix: stop the login keypad's global
+                                // keydown listener from stealing digit/
+                                // backspace input meant for in-app fields.
+          watchOwnActiveStatus(user.uid);
+          mountMarkerApp(markerAppMount, user, { onLogout: () => logout() }).then(() => {
+            if (pendingBiometricOffer) {
+              maybeOfferBiometricEnroll(APP_NAME, pendingBiometricOffer);
+              pendingBiometricOffer = null;
+            }
+          }).catch((err) => {
+            markerAppMount.innerHTML = `<div class="page"><div class="msg msg--err">${err.message}</div></div>`;
+          });
+        }
+        if (!user) {
+          mountedForUid = null;
+          stopActiveListener();
+          markerAppMount.innerHTML = "";
+        }
+      });
+    })();
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch((err) => {
