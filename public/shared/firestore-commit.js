@@ -38,6 +38,19 @@ export async function fetchExistingStudents() {
 }
 
 /**
+ * Fetches all current class doc IDs from Firestore, for detecting
+ * (on a re-upload) which branches from the previous import no longer
+ * have any students in the new sheet. Call this alongside
+ * fetchExistingStudents() before building the write plan.
+ */
+export async function fetchExistingClasses() {
+  const snap = await getDocs(collection(db, "classes"));
+  const ids = new Set();
+  snap.forEach((docSnap) => ids.add(docSnap.id));
+  return ids;
+}
+
+/**
  * Builds a flat list of write operations from the parsed import
  * result and (for a re-upload) the diff against existing data. Pure
  * function — no Firestore calls — so the admin preview screen can
@@ -47,9 +60,17 @@ export async function fetchExistingStudents() {
  * @param {{added:object[], updated:object[], removed:object[]}|null} diff
  *   - output of diffAgainstExisting(), or null for a first-time import
  *     (no existing data to diff against — everything is "added").
+ * @param {Set<string>|null} existingClassIds - class doc IDs already
+ *   in Firestore before this import (from fetchExistingClasses()).
+ *   Only used on a re-upload (diff truthy) — any of these no longer
+ *   present in parsed.classes gets its studentCount zeroed out, so a
+ *   branch that's dropped to zero students (instead of being removed
+ *   from the sheet entirely) stops showing up as an active class on
+ *   the dashboard. The doc itself is kept (not deleted) so any
+ *   capacity value and attendance history stay intact.
  * @returns {Array<{type: string, path: string, data: object|null}>}
  */
-export function buildWritePlan(parsed, diff) {
+export function buildWritePlan(parsed, diff, existingClassIds = null) {
   const ops = [];
 
   // --- college/main (merge, not overwrite) ---
@@ -108,6 +129,26 @@ export function buildWritePlan(parsed, diff) {
         ...(cap != null ? { capacity: cap } : {}),
       },
     });
+  }
+
+  // --- classes/{classId} that vanished from this import (re-upload only) ---
+  // A branch with zero students now simply won't appear in
+  // parsed.classes (deriveClasses only creates entries for classIds
+  // that actually have students). Without this, its old doc would be
+  // left behind with a stale non-zero studentCount forever, so it
+  // would keep showing up on the dashboard as an active, unmarked
+  // class even though nobody is enrolled in it anymore.
+  if (diff && existingClassIds) {
+    const currentClassIds = new Set(parsed.classes.map((c) => c.classId));
+    for (const classId of existingClassIds) {
+      if (currentClassIds.has(classId)) continue;
+      ops.push({
+        type: "update",
+        collection: "classes",
+        id: classId,
+        data: { studentCount: 0, updatedAt: "__serverTimestamp__" },
+      });
+    }
   }
 
   // --- students/{regNo} ---
