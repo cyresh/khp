@@ -21,7 +21,7 @@
 // Version bumped to v2 to force every existing installation to drop
 // whatever it had cached under v1 and start clean.
 
-const CACHE_NAME = "khtpc-marker-shell-v2";
+const CACHE_NAME = "khtpc-marker-shell-v3";
 const FILES_TO_CACHE = [
   "/marker/index.html",
   "/marker/manifest.json",
@@ -31,6 +31,7 @@ const FILES_TO_CACHE = [
   "/shared/auth.js",
   "/shared/college-header.js",
   "/shared/pin-keypad.js",
+  "/shared/biometric-auth.js",
 ];
 
 self.addEventListener("install", (event) => {
