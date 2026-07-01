@@ -322,6 +322,14 @@ async function renderLiveGrid(main, state, date, isToday) {
     busSnap.forEach((d) => buses.push({ id: d.id, ...d.data() }));
     buses.sort((a, b) => naturalSort(a.id, b.id));
     classSnap.forEach((d) => classes.push({ id: d.id, ...d.data() }));
+    // Only show branches that actually have students enrolled. A class
+    // doc can be left behind with studentCount explicitly 0 (e.g. a
+    // branch dropped in a later Excel re-upload) — skip those so the
+    // dashboard doesn't display an empty branch (like "Not yet marked"
+    // for a course nobody is enrolled in). Docs missing the field
+    // entirely (legacy/manual entries) are kept, since we can't tell
+    // whether they're genuinely empty.
+    classes = classes.filter((c) => c.studentCount !== 0);
     classes.sort((a, b) => naturalSort(a.id, b.id));
     holidays = { hostel: hostelHoliday, bus: busHoliday, class: classHoliday };
   } catch (err) {
@@ -821,7 +829,7 @@ async function renderDashCharts(byCategory, holidays) {
     const hasCap=caps.some(c=>c!=null&&c>0);
     const C_ENR="#2e6da4", C_CAP="#b0c4de";
     const fs=12, barH=14, gap=10, padL=90, padR=48;
-    const padT=hasCap?28:10, totalRowH=hasCap?52:28;
+    const padT=hasCap?28:10, totalRowH=hasCap?66:32;
     const rowH=hasCap?barH*2+6:barH+4;
     const grandE=enrolled.reduce((a,b)=>a+b,0);
     const grandC=hasCap?caps.reduce((a,b)=>a+(b||0),0):null;
@@ -877,27 +885,69 @@ async function renderDashCharts(byCategory, holidays) {
         numLbl(enrl,padL,rowY,eW,rowH,true);
       }
     });
-    const ty=padT+labels.length*(rowH+gap)+5;
-    ctx.fillStyle="#e6e6e6"; ctx.fillRect(0,ty,W,totalRowH);
-    ctx.fillStyle="#ccc"; ctx.fillRect(0,ty,W,1);
-    const txtY=ty+(hasCap?14:totalRowH/2);
-    ctx.font="bold "+(fs+1)+"px system-ui,sans-serif";
-    ctx.textAlign="right"; ctx.textBaseline="middle"; ctx.fillStyle="#222";
-    ctx.fillText("Total",padL-8,txtY);
-    ctx.fillStyle=C_ENR; ctx.textAlign="left"; ctx.fillText(grandE,padL+6,txtY);
+    // ── Total summary card ────────────────────────────────────────────
+    // Rounded panel, clear "N enrolled / M capacity" line, and a slim
+    // pill progress bar with a status colour + label above it instead
+    // of cramped text stuffed inside a thin bar.
+    function rr(x,y,w,h,r){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h);}
+    const ty=padT+labels.length*(rowH+gap)+6;
+    const panelH=totalRowH-6, panelR=10;
+    rr(2,ty,W-4,panelH,panelR); ctx.fillStyle="#f5f7fa"; ctx.fill();
+    rr(2,ty,W-4,panelH,panelR); ctx.strokeStyle="#e3e7ec"; ctx.lineWidth=1; ctx.stroke();
+
+    const innerX=16;
+    const line1Y=hasCap?ty+18:ty+panelH/2;
+    ctx.textAlign="left"; ctx.textBaseline="middle";
+    ctx.font="bold 10px system-ui,sans-serif"; ctx.fillStyle="#8a8f98";
+    ctx.fillText("TOTAL",innerX,line1Y);
+    const totalLblW=ctx.measureText("TOTAL").width;
+
+    ctx.font="bold 15px system-ui,sans-serif"; ctx.fillStyle=C_ENR;
+    const enrTxt=String(grandE);
+    ctx.fillText(enrTxt,innerX+totalLblW+10,line1Y);
+    const enrW=ctx.measureText(enrTxt).width;
+
+    let cursorX=innerX+totalLblW+10+enrW;
+    ctx.font="12px system-ui,sans-serif"; ctx.fillStyle="#5a6270";
+    const enrolledWord=hasCap?" enrolled":" students";
+    ctx.fillText(enrolledWord,cursorX,line1Y);
+    cursorX+=ctx.measureText(enrolledWord).width;
+
     if(hasCap&&grandC){
-      const ew2=ctx.measureText(String(grandE)).width;
-      ctx.fillStyle="#444"; ctx.font="bold "+fs+"px system-ui,sans-serif";
-      ctx.fillText(" / "+grandC+" cap",padL+6+ew2,txtY);
-      const bY=ty+28,bH2=14,bW=W-padL-10;
-      ctx.fillStyle="#d0d0d0";
-      ctx.beginPath();if(ctx.roundRect)ctx.roundRect(padL,bY,bW,bH2,7);else ctx.rect(padL,bY,bW,bH2);ctx.fill();
-      const pct=Math.min(fillPct,100),fw=Math.round((pct/100)*bW);
-      ctx.fillStyle=pct>=100?"#c0392b":pct>=80?"#e67e22":"#27ae60";
-      if(fw>0){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(padL,bY,fw,bH2,7);else ctx.rect(padL,bY,fw,bH2);ctx.fill();}
-      ctx.fillStyle="#fff"; ctx.font="bold 10px system-ui,sans-serif";
-      ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText(fillPct+"% filled",padL+bW/2,bY+bH2/2);
+      ctx.fillStyle="#c3c8d1"; ctx.fillText("  /  ",cursorX,line1Y);
+      cursorX+=ctx.measureText("  /  ").width;
+      ctx.font="bold 15px system-ui,sans-serif"; ctx.fillStyle="#444";
+      const capTxt=String(grandC);
+      ctx.fillText(capTxt,cursorX,line1Y);
+      cursorX+=ctx.measureText(capTxt).width;
+      ctx.font="12px system-ui,sans-serif"; ctx.fillStyle="#5a6270";
+      ctx.fillText(" capacity",cursorX,line1Y);
+
+      // Status pill on the right: OK / Nearly Full / Over Capacity
+      const overBy=grandE-grandC;
+      const status = fillPct>=100 ? {t:(overBy>0?"OVER BY "+overBy:"FULL"), bg:"#fdecea", fg:"#c0392b"}
+                    : fillPct>=80 ? {t:fillPct+"% FULL", bg:"#fef3e6", fg:"#b9660a"}
+                    : {t:fillPct+"% FULL", bg:"#eaf6ee", fg:"#1e8449"};
+      ctx.font="bold 10px system-ui,sans-serif";
+      const stW=ctx.measureText(status.t).width+16;
+      const stX=W-10-stW, stY=line1Y-9;
+      rr(stX,stY,stW,18,9); ctx.fillStyle=status.bg; ctx.fill();
+      ctx.fillStyle=status.fg; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(status.t,stX+stW/2,line1Y);
+      ctx.textAlign="left";
+
+      // Progress bar (capped visually at 100%, colour reflects status)
+      const bY=ty+34,bH2=10,bW=W-innerX*2;
+      rr(innerX,bY,bW,bH2,bH2/2); ctx.fillStyle="#e1e5eb"; ctx.fill();
+      const pctCapped=Math.min(fillPct,100), fw=Math.round((pctCapped/100)*bW);
+      if(fw>0){
+        rr(innerX,bY,fw,bH2,bH2/2);
+        const grad=ctx.createLinearGradient(innerX,0,innerX+bW,0);
+        if(fillPct>=100){grad.addColorStop(0,"#e57368");grad.addColorStop(1,"#c0392b");}
+        else if(fillPct>=80){grad.addColorStop(0,"#f0a94e");grad.addColorStop(1,"#e67e22");}
+        else{grad.addColorStop(0,"#3fae6a");grad.addColorStop(1,"#1e8449");}
+        ctx.fillStyle=grad; ctx.fill();
+      }
     }
   }
 
