@@ -31,6 +31,7 @@ import { parseWorkbook, diffAgainstExisting } from "../shared/excel-import.js";
 import { invalidateCollegeCache } from "../shared/college-header.js";
 import {
   buildWritePlan,
+  fetchExistingClasses,
   commitWritePlan,
   fetchExistingStudents,
 } from "../shared/firestore-commit.js";
@@ -212,6 +213,7 @@ function mountImportSection(el) {
   let step = "upload"; // "upload" | "preview" | "commit" | "done"
   let parsed = null;
   let diff = null;
+  let existingClassIds = null;
   let resolvedMismatches = {}; // regNo → chosen stopNo
 
   renderUpload();
@@ -268,6 +270,7 @@ function mountImportSection(el) {
       msgEl.innerHTML = `<p class="status">Comparing with existing data…</p>`;
       const existingMap = await fetchExistingStudents();
       diff = diffAgainstExisting(parsed.students, existingMap);
+      existingClassIds = await fetchExistingClasses();
 
       // Pre-populate resolved mismatches with best-guess
       resolvedMismatches = {};
@@ -435,7 +438,7 @@ function mountImportSection(el) {
         }
       }
 
-      const ops = buildWritePlan(parsed, diff);
+      const ops = buildWritePlan(parsed, diff, existingClassIds);
       const total = ops.length;
 
       await commitWritePlan(ops, ({ completed }) => {
