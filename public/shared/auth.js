@@ -169,8 +169,14 @@ export async function bootstrapFirstAdmin({ name, staffId, pin }) {
 
 /**
  * Logs a marker or admin in with staffId + PIN.
- * Returns { uid, profile } on success; throws a user-facing Error on
- * failure (wrong PIN, locked out, or deactivated account).
+ * Returns { uid, profile, secret } on success; throws a user-facing
+ * Error on failure (wrong PIN, locked out, or deactivated account).
+ * `secret` is the derived {email, password} Firebase Auth pair for
+ * this staffId+PIN — callers can hand it to
+ * shared/biometric-auth.js's enableBiometricLogin() right after a
+ * successful login to offer saving it behind a fingerprint gate on
+ * this device, without re-deriving it (and re-reading staffIndex) a
+ * second time.
  */
 export async function loginWithPin(staffIdRaw, pin) {
   const staffId = sanitizeStaffId(staffIdRaw);
@@ -194,11 +200,32 @@ export async function loginWithPin(staffIdRaw, pin) {
       throw new Error("This account has been deactivated. Contact your admin.");
     }
     await clearAttempts(staffId);
-    return { uid: cred.user.uid, profile: profileSnap.data() };
+    return { uid: cred.user.uid, profile: profileSnap.data(), secret: { email, password } };
   } catch (err) {
     await recordFailedAttempt(staffId);
     throw new Error(GENERIC_LOGIN_ERROR);
   }
+}
+
+/**
+ * Signs in using an already-derived {email, password} pair instead of
+ * a staffId+PIN — used to complete a fingerprint/biometric login (see
+ * shared/biometric-auth.js), where the pair was derived once during a
+ * normal PIN login and saved locally behind the device's platform
+ * authenticator. Runs the same "is this account still active" check
+ * as loginWithPin() so a PIN reset or deactivation since the
+ * biometric login was saved is still caught immediately — it just
+ * surfaces as a normal sign-in failure rather than a lockout, since
+ * there's no staffId here to record a failed attempt against.
+ */
+export async function signInWithStoredSecret(email, password) {
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const profileSnap = await getDoc(doc(db, "users", cred.user.uid));
+  if (!profileSnap.exists() || profileSnap.data().active === false) {
+    await signOut(auth);
+    throw new Error("This account has been deactivated. Contact your admin.");
+  }
+  return { uid: cred.user.uid, profile: profileSnap.data() };
 }
 
 export async function logout() {
