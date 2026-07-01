@@ -21,7 +21,7 @@
 // Version bumped to v2 to force every existing installation to drop
 // whatever it had cached under v1 and start clean.
 
-const CACHE_NAME = "khtpc-admin-shell-v3";
+const CACHE_NAME = "khtpc-admin-shell-v4";
 const FILES_TO_CACHE = [
   "/admin/index.html",
   "/admin/manifest.json",
@@ -31,6 +31,7 @@ const FILES_TO_CACHE = [
   "/shared/auth.js",
   "/shared/college-header.js",
   "/shared/pin-keypad.js",
+  "/shared/biometric-auth.js",
   "/shared/excel-import.js",
   "/shared/firestore-commit.js",
 ];
