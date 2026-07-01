@@ -22,6 +22,8 @@
  *   pinLength?: number,
  *   onSubmit: (args: {staffId: string, pin: string}) => Promise<void>,
  *   submitLabel?: string,
+ *   initialStaffId?: string,
+ *   biometric?: { available: boolean, onUse: () => Promise<void> },
  * }} options
  */
 export function mountPinLogin(container, options) {
@@ -29,8 +31,9 @@ export function mountPinLogin(container, options) {
   const pinLength = options.pinLength || 6;
   const submitLabel = options.submitLabel || "Login";
   const staffIdPlaceholder = options.staffIdPlaceholder || "e.g. admin01";
+  const biometric = options.biometric && options.biometric.available ? options.biometric : null;
 
-  let staffId = "";
+  let staffId = options.initialStaffId || "";
   let pin = "";
   let submitting = false;
   let lastError = "";
@@ -46,10 +49,16 @@ export function mountPinLogin(container, options) {
 
   container.innerHTML = `
     <div class="pin-login">
+      ${biometric ? `
+      <button type="button" class="btn btn--full btn--secondary" id="pin-login-biometric" style="margin-bottom:var(--space-4);">
+        👆 Login with Fingerprint
+      </button>
+      <div style="text-align:center; color:var(--color-text-muted); font-size:0.8em; margin:-var(--space-2) 0 var(--space-4);">or use Staff ID + PIN</div>
+      ` : ""}
       <div class="field">
         <label for="pin-login-staffid">Staff ID</label>
         <input id="pin-login-staffid" type="text" autocomplete="username"
-               inputmode="text" placeholder="${escapeHtml(staffIdPlaceholder)}" />
+               inputmode="text" placeholder="${escapeHtml(staffIdPlaceholder)}" value="${escapeHtml(staffId)}" />
       </div>
 
       <div class="field">
@@ -75,6 +84,7 @@ export function mountPinLogin(container, options) {
   const keypadEl = container.querySelector("#pin-login-keypad");
   const msgEl = container.querySelector("#pin-login-msg");
   const submitBtn = container.querySelector("#pin-login-submit");
+  const biometricBtn = container.querySelector("#pin-login-biometric");
 
   // Touch devices: suppress the native keyboard on the hidden PIN
   // input (see isTouchDevice computed above). `inputmode="none"` is
@@ -339,6 +349,28 @@ export function mountPinLogin(container, options) {
   }
 
   submitBtn.addEventListener("click", attemptSubmit);
+
+  if (biometricBtn && biometric) {
+    biometricBtn.addEventListener("click", async () => {
+      if (submitting) return;
+      submitting = true;
+      biometricBtn.disabled = true;
+      biometricBtn.textContent = "👆 Checking fingerprint…";
+      submitBtn.disabled = true;
+      msgEl.innerHTML = "";
+      try {
+        await biometric.onUse();
+        // On success, calling code navigates away — no state reset needed.
+      } catch (err) {
+        msgEl.innerHTML = `<div class="msg msg--err">${escapeHtml(err.message || "Fingerprint login failed. Use your PIN instead.")}</div>`;
+      } finally {
+        submitting = false;
+        biometricBtn.disabled = false;
+        biometricBtn.textContent = "👆 Login with Fingerprint";
+        updateSubmitEnabled();
+      }
+    });
+  }
 
   return { destroy };
 }
