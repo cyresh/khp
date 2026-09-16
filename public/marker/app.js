@@ -17,6 +17,8 @@ import {
   buildRecordId,
   getHoliday,
   fetchHolidaysForMonth,
+  getBackdateGrant,
+  formatTimeLeft,
 } from "../shared/attendance.js";
 import { mountSummary } from "./summary.js";
 import {
@@ -138,12 +140,28 @@ export async function mountMarkerApp(container, user, options = {}) {
   }
   const profile = profileSnap.data();
 
+  // Backdate access: null unless an admin has handed this marker a
+  // live, unexpired grant. Fetched once at mount — a grant issued
+  // mid-session simply needs a refresh/re-login, which is fine since
+  // the admin has to tell the marker about it anyway. Failure to
+  // read it is non-fatal: the app just behaves as it always did.
+  let backdateGrant = null;
+  try {
+    backdateGrant = await getBackdateGrant(user.uid);
+  } catch (_) {
+    backdateGrant = null;
+  }
+
   const state = {
     profile,
     selectedScopeId: profile.scopeIds.length === 1 ? profile.scopeIds[0] : null,
     selectedSession: null,
     screen: profile.scopeIds.length === 1 ? "roster" : "home",
     lastSavedDate: null,
+    // The date currently being marked. Always today unless the
+    // marker has used a live backdate grant to pick an older day.
+    markDate: todayLocalDate(),
+    showDatePicker: false,
     allSummaryDailyDate: null, // persists selected date in View All Summary daily tab
   };
 
@@ -157,12 +175,92 @@ export async function mountMarkerApp(container, user, options = {}) {
     if (state.screen === "hostelsummary") return renderHostelSummaryScreen();
   }
 
+  // ── Backdate access helpers ─────────────────────────────────────
+  //
+  // A live grant unlocks two things, both of which the marker app
+  // otherwise hard-codes to "today": which date the roster screen
+  // loads/saves, and whether an already-locked record can still be
+  // edited. Everything below is a no-op when no grant exists, so a
+  // marker without one sees exactly the previous UI.
+
+  function grantIsLive() {
+    return !!backdateGrant && backdateGrant.expiresMs > Date.now();
+  }
+
+  function isBackdating() {
+    return state.markDate !== todayLocalDate();
+  }
+
+  /** Renders the banner/date-picker strip shown above the roster and
+   * on the home screen. Empty string when the marker has no grant
+   * and isn't already backdating. */
+  function backdateBarHtml() {
+    if (!grantIsLive()) {
+      // Grant lapsed while the marker was mid-session on an old date:
+      // say so plainly instead of silently saving to the wrong day.
+      if (isBackdating()) {
+        return `<div class="msg msg--err" style="margin:var(--space-3) var(--space-4) 0;">
+          Your backdate access has expired. <button class="btn btn--sm" id="backdate-today-btn">Back to today</button>
+        </div>`;
+      }
+      return "";
+    }
+    if (isBackdating()) {
+      return `<div class="backdate-banner" id="backdate-banner">
+        <span class="backdate-banner__text">⏪ Marking for <strong>${formatDateDMY(state.markDate)}</strong> (not today)</span>
+        <button class="btn btn--sm btn--secondary" id="backdate-today-btn">Back to today</button>
+      </div>`;
+    }
+    const picker = state.showDatePicker ? `
+      <div class="backdate-picker">
+        <input type="date" id="backdate-date" max="${todayLocalDate()}" value="${state.markDate}" class="report-controls__input" />
+        <button class="btn btn--sm" id="backdate-go-btn">Open that date</button>
+        <button class="btn btn--sm btn--secondary" id="backdate-cancel-btn">Cancel</button>
+      </div>` : "";
+    return `<div class="backdate-banner backdate-banner--offer">
+      <span class="backdate-banner__text">⏪ Backdate access granted · ${formatTimeLeft(backdateGrant.expiresMs)}</span>
+      ${state.showDatePicker ? "" : `<button class="btn btn--sm" id="backdate-open-btn">Mark a missed date</button>`}
+      ${picker}
+    </div>`;
+  }
+
+  function wireBackdateBar() {
+    const openBtn = container.querySelector("#backdate-open-btn");
+    if (openBtn) openBtn.addEventListener("click", () => { state.showDatePicker = true; render(); });
+
+    const cancelBtn = container.querySelector("#backdate-cancel-btn");
+    if (cancelBtn) cancelBtn.addEventListener("click", () => { state.showDatePicker = false; render(); });
+
+    const todayBtn = container.querySelector("#backdate-today-btn");
+    if (todayBtn) todayBtn.addEventListener("click", () => {
+      state.markDate = todayLocalDate();
+      state.showDatePicker = false;
+      render();
+    });
+
+    const goBtn = container.querySelector("#backdate-go-btn");
+    if (goBtn) goBtn.addEventListener("click", () => {
+      const val = container.querySelector("#backdate-date")?.value;
+      if (!val) return;
+      // Future dates are meaningless here and the rules would reject
+      // them anyway — block in the UI so the marker gets a reason.
+      if (val > todayLocalDate()) {
+        alert("You can only mark today or an earlier date.");
+        return;
+      }
+      state.markDate = val;
+      state.showDatePicker = false;
+      if (state.selectedScopeId) state.screen = "roster";
+      render();
+    });
+  }
+
   function renderSummaryScreen() {
     mountSummary(container, {
       profile,
       scopeId: state.selectedScopeId,
       session: state.selectedSession,
-      date: state.lastSavedDate || todayLocalDate(),
+      date: state.lastSavedDate || state.markDate,
       onBack: () => {
         state.screen = "roster";
         render();
@@ -179,7 +277,8 @@ export async function mountMarkerApp(container, user, options = {}) {
           <button class="btn btn--secondary" id="logout-btn-home" style="min-height:auto; padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm);">Logout</button>
         </div>
         <p class="status">${formatDateDMY(todayLocalDate())} · ${capitalize(profile.category)} marker</p>
-        <h3 style="margin-top: var(--space-5);">Choose a class</h3>
+        ${backdateBarHtml()}
+        <h3 style="margin-top: var(--space-5);">${isBackdating() ? "Choose a class to mark for " + escapeHtml(formatDateDMY(state.markDate)) : "Choose a class"}</h3>
         <div class="scope-list" id="scope-list"></div>
         ${showViewAll ? `
           <div style="margin-top: var(--space-5);">
@@ -191,6 +290,7 @@ export async function mountMarkerApp(container, user, options = {}) {
       </div>
     `;
     container.querySelector("#logout-btn-home").addEventListener("click", () => options.onLogout());
+    wireBackdateBar();
     const listEl = container.querySelector("#scope-list");
     listEl.innerHTML = profile.scopeIds
       .map((scopeId) => `<div class="scope-list__item" data-scope="${escapeHtml(scopeId)}">${escapeHtml(scopeLabel(scopeId))} <span>→</span></div>`)
@@ -1316,9 +1416,9 @@ export async function mountMarkerApp(container, user, options = {}) {
         loadRecord({
           category: profile.category,
           scopeId: state.selectedScopeId,
-          date: todayLocalDate(),
+          date: state.markDate,
         }),
-        getHoliday({ category: profile.category, date: todayLocalDate() }),
+        getHoliday({ category: profile.category, date: state.markDate }),
       ]);
     } catch (err) {
       container.innerHTML = `<div class="page"><div class="msg msg--err">Could not load roster: ${escapeHtml(err.message)}</div></div>`;
@@ -1338,9 +1438,10 @@ export async function mountMarkerApp(container, user, options = {}) {
           <h2>${escapeHtml(scopeLabel(state.selectedScopeId))}</h2>
           <div class="msg msg--warn msg--roster-empty">
             <span class="roster-empty__icon">📅</span>
-            <div class="roster-empty__title">Today is a holiday</div>
-            <div class="roster-empty__hint">${escapeHtml(holiday.label || "Marked as a holiday for " + capitalize(profile.category) + ".")}<br>Attendance marking is disabled for today.</div>
+            <div class="roster-empty__title">${isBackdating() ? escapeHtml(formatDateDMY(state.markDate)) + " is a holiday" : "Today is a holiday"}</div>
+            <div class="roster-empty__hint">${escapeHtml(holiday.label || "Marked as a holiday for " + capitalize(profile.category) + ".")}<br>Attendance marking is disabled for this date.</div>
           </div>
+          ${isBackdating() ? `<div style="margin-top:var(--space-3);"><button class="btn btn--secondary btn--full" id="backdate-today-btn">← Back to today</button></div>` : ""}
           <div style="display:flex; flex-direction:column; gap:var(--space-3); margin-top:var(--space-4);">
             ${multiScope ? `<button class="btn btn--secondary btn--full" id="back-btn-holiday">← Back</button>` : ""}
             <button class="btn btn--full" id="summary-btn-holiday" style="background:#1a73e8;">
@@ -1350,8 +1451,9 @@ export async function mountMarkerApp(container, user, options = {}) {
         </div>
       `;
       container.querySelector("#logout-btn-holiday").addEventListener("click", () => options.onLogout());
+      wireBackdateBar();
       container.querySelector("#summary-btn-holiday").addEventListener("click", () => {
-        state.lastSavedDate = todayLocalDate();
+        state.lastSavedDate = state.markDate;
         state.screen = "summary";
         render();
       });
@@ -1416,7 +1518,10 @@ export async function mountMarkerApp(container, user, options = {}) {
   }
 
   function renderRoster(roster, working, existingRecord) {
-    const isLocked = !!existingRecord?.locked;
+    // A live grant overrides the lock (product decision), as does
+    // being an admin — everyone else still gets the read-only view.
+    const canEditLocked = profile.role === "admin" || grantIsLive();
+    const isLocked = !!existingRecord?.locked && !canEditLocked;
     // Single-scope class markers skip BOTH the home and session
     // screens entirely (no multi-scope picker needed, no session
     // toggle for class), so the roster screen is the only place they
@@ -1435,14 +1540,16 @@ export async function mountMarkerApp(container, user, options = {}) {
           </div>
           <div class="marker-top-bar__title-block">
             <span class="marker-top-bar__title">${escapeHtml(scopeLabel(state.selectedScopeId))}</span>
-            <span class="marker-top-bar__date">${formatDateDMY(todayLocalDate())}</span>
+            <span class="marker-top-bar__date${isBackdating() ? " marker-top-bar__date--backdated" : ""}">${formatDateDMY(state.markDate)}</span>
           </div>
           <div class="marker-top-bar__right">
             <button class="marker-top-bar__summary-btn" id="view-summary-btn-roster">📊 Summary</button>
             ${isOnlyScreenEverShown ? `<button class="marker-top-bar__logout-btn" id="logout-btn-roster">Logout</button>` : ""}
           </div>
         </div>
+        ${backdateBarHtml()}
         ${isLocked ? `<div class="locked-banner" style="margin:var(--space-3) var(--space-4) 0;">🔒 This record is locked and can no longer be edited here. Contact an admin if a correction is needed.</div>` : ""}
+        ${existingRecord?.locked && !isLocked ? `<div class="locked-banner locked-banner--override" style="margin:var(--space-3) var(--space-4) 0;">🔓 This record was finalized, but your backdate access lets you correct it. Your changes will be saved over it.</div>` : ""}
         <div id="roster-list" style="padding-top:var(--space-3);"></div>
       </div>
       <div class="marker-bottom-bar">
@@ -1505,6 +1612,7 @@ export async function mountMarkerApp(container, user, options = {}) {
 
     attachRowHandlers(listEl, working, isLocked);
     updateCounts(working);
+    wireBackdateBar();
 
     const saveBtn = container.querySelector("#save-btn");
     saveBtn.addEventListener("click", async () => {
@@ -1619,27 +1727,39 @@ export async function mountMarkerApp(container, user, options = {}) {
         {
           category: profile.category,
           scopeId: state.selectedScopeId,
-          date: todayLocalDate(),
+          date: state.markDate,
           session: state.selectedSession,
           records: Array.from(working.values()),
           markedBy: { uid: user.uid, name: profile.name, staffId: profile.staffId },
+          backdateInfo: isBackdating() ? { grantedBy: backdateGrant?.grantedBy || null } : null,
         },
         existingRecord,
-        profile.role === "admin"
+        profile.role === "admin" || grantIsLive()
       );
-      const savedDate = todayLocalDate();
+      const savedDate = state.markDate;
       state.lastSavedDate = savedDate;
       // Show success message + action buttons
       const hasMultipleScopes = profile.scopeIds.length > 1;
       saveMsg.innerHTML = `
         <div class="marker-bottom-bar__saved">
-          <div class="marker-bottom-bar__saved-msg">✓ Saved successfully</div>
+          <div class="marker-bottom-bar__saved-msg">✓ Saved${isBackdating() ? " for " + escapeHtml(formatDateDMY(state.markDate)) : " successfully"}</div>
           <div class="marker-bottom-bar__saved-actions">
+            ${isBackdating() ? `<button class="marker-bottom-bar__action-btn marker-bottom-bar__action-btn--secondary" id="backdate-today-btn-saved">Back to today</button>` : ""}
             ${hasMultipleScopes ? `<button class="marker-bottom-bar__action-btn marker-bottom-bar__action-btn--secondary" id="back-to-classes-btn">← Classes</button>` : ""}
             <button class="marker-bottom-bar__action-btn" id="view-summary-btn">View Summary →</button>
           </div>
         </div>
       `;
+      // Wired separately from wireBackdateBar(): the roster banner may
+      // already own a #backdate-today-btn, so this one needs its own id.
+      const backToTodayBtn = container.querySelector("#backdate-today-btn-saved");
+      if (backToTodayBtn) backToTodayBtn.addEventListener("click", () => {
+        state.markDate = todayLocalDate();
+        state.showDatePicker = false;
+        state.screen = "roster";
+        render();
+      });
+
       const summaryBtn = container.querySelector("#view-summary-btn");
       if (summaryBtn) {
         summaryBtn.addEventListener("click", () => {
