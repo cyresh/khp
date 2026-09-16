@@ -1369,3 +1369,85 @@ p { margin: 0 0 var(--space-3) 0; }
   border: 1px solid var(--color-border);
 }
 .marker-bottom-bar__action-btn--secondary:hover { background: var(--color-surface-raised); }
+
+/* ================================================================ */
+/* Backdate access — marker banner, picker, and admin grant list     */
+/* ================================================================ */
+
+/* Shown above the roster / on the marker home screen whenever an
+   admin has granted time-boxed access to mark an older date. The
+   "--offer" variant is the idle state (access available, still on
+   today); the base variant is the loud "you are NOT marking today"
+   warning, deliberately high-contrast so nobody saves a whole
+   roster to the wrong day by accident. */
+.backdate-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: #fef3c7;
+  color: #78350f;
+  border-left: 4px solid #d97706;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.backdate-banner--offer {
+  background: #e0f2fe;
+  color: #075985;
+  border-left-color: #0284c7;
+  font-weight: 500;
+}
+
+.backdate-banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.backdate-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.backdate-picker input[type="date"] {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+/* Roster top-bar date turns amber when it isn't today's date. */
+.marker-top-bar__date--backdated {
+  color: #b45309;
+  font-weight: 700;
+}
+
+/* Admin override notice when a grant lets a marker edit a record
+   that was already finalized. */
+.locked-banner--override {
+  background: #dcfce7;
+  color: #166534;
+  border-left: 4px solid #16a34a;
+}
+
+/* Admin > Users > Backdate Access */
+.bd-grant-row--expired {
+  opacity: 0.55;
+}
+
+.bd-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.bd-pill--live    { background: #dcfce7; color: #166534; }
+.bd-pill--expired { background: #f1f5f9; color: #475569; }

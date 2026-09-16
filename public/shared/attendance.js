@@ -158,15 +158,22 @@ export async function loadRecord({ category, scopeId, date }) {
  * (single-teacher-per-class is still the assumed case there; revisit
  * if that changes).
  *
+ * BACKDATING: a marker holding a live backdateGrant (see below) may
+ * write a record for a past date AND may edit an already-locked
+ * record, so `canEditLocked` is no longer "is admin" but "is admin
+ * OR holds a live grant". Any save where `date` isn't today gets
+ * `backdated: true` plus a `backdateInfo` stamp so the admin can
+ * tell a same-day mark apart from a catch-up one later.
+ *
  * @param {object} existingRecord - result of loadRecord(), or null
- * @param {boolean} isCurrentUserAdmin
+ * @param {boolean} canEditLocked - admin, or a marker with a live grant
  */
 export async function saveRecord(
-  { category, scopeId, date, session, records, markedBy },
+  { category, scopeId, date, session, records, markedBy, backdateInfo },
   existingRecord,
-  isCurrentUserAdmin
+  canEditLocked
 ) {
-  if (existingRecord && existingRecord.locked && !isCurrentUserAdmin) {
+  if (existingRecord && existingRecord.locked && !canEditLocked) {
     throw new Error("This record is locked and can no longer be edited. Ask an admin if a correction is needed.");
   }
 
@@ -200,6 +207,18 @@ export async function saveRecord(
   };
   if (!existingRecord) {
     payload.createdAt = serverTimestamp();
+  }
+  // Audit trail for catch-up marking. Only written on a backdated
+  // save — a normal same-day save leaves whatever was there before
+  // untouched (so a record first created as a backdate keeps its
+  // stamp even if an admin later edits it on some other day).
+  if (date !== todayLocalDate()) {
+    payload.backdated = true;
+    payload.backdateInfo = {
+      markedOn: todayLocalDate(),
+      by: markedBy || null,
+      grantedBy: backdateInfo?.grantedBy || null,
+    };
   }
 
   await setDoc(doc(db, "attendanceRecords", recordId), payload, { merge: true });
@@ -311,4 +330,90 @@ export async function fetchAllHolidays({ category }) {
   snap.forEach((d) => list.push(d.data()));
   list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return list;
+}
+
+// ----------------------------------------------------------------
+// Backdate grants
+// ----------------------------------------------------------------
+//
+// Document shape (backdateGrants/{uid}):
+//   {
+//     uid, staffId, name,          // denormalised for the admin list
+//     expiresAt: Timestamp,        // hard stop — checked in rules too
+//     grantedBy: { uid, name, staffId },
+//     grantedAt: server timestamp,
+//   }
+//
+// A marker who missed marking some day has no way to reach that day
+// on their own: the roster screen is pinned to today. An admin can
+// hand out a time-boxed grant (default 24h) that unlocks "mark a
+// missed date" in the marker app for ANY past date, including dates
+// whose record was already finalized/locked — the grant overrides
+// the lock, matching the product decision that a genuine correction
+// shouldn't need an admin to re-key the whole roster.
+//
+// One doc per user, so granting twice just extends/replaces the
+// window, and revoking is a plain delete. Expiry is enforced BOTH
+// here (so the UI hides itself the moment it lapses) and in
+// firestore.rules (so a stale tab can't keep writing).
+
+/**
+ * Returns the caller's (or `uid`'s) grant if one exists AND is still
+ * live, otherwise null. An expired doc is treated exactly like a
+ * missing one — it is left in place for the admin's audit view and
+ * cleaned up on the next grant to the same user.
+ */
+export async function getBackdateGrant(uid) {
+  const snap = await getDoc(doc(db, "backdateGrants", uid));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  const expiresMs = data.expiresAt?.toMillis?.() ?? 0;
+  if (expiresMs <= Date.now()) return null;
+  return { ...data, expiresMs };
+}
+
+/** Admin-only: grant `uid` backdate access for `hours` from now. */
+export async function grantBackdateAccess({ uid, staffId, name, hours, grantedBy }) {
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+  await setDoc(doc(db, "backdateGrants", uid), {
+    uid,
+    staffId: staffId || null,
+    name: name || null,
+    hours,
+    expiresAt,
+    grantedBy,
+    grantedAt: serverTimestamp(),
+  });
+}
+
+/** Admin-only: revoke immediately (delete beats waiting for expiry). */
+export async function revokeBackdateAccess(uid) {
+  await deleteDoc(doc(db, "backdateGrants", uid));
+}
+
+/** Admin-only: every grant doc, live ones first, for the admin list. */
+export async function fetchAllBackdateGrants() {
+  const snap = await getDocs(collection(db, "backdateGrants"));
+  const list = [];
+  snap.forEach((d) => {
+    const data = d.data();
+    const expiresMs = data.expiresAt?.toMillis?.() ?? 0;
+    list.push({ ...data, uid: d.id, expiresMs, live: expiresMs > Date.now() });
+  });
+  list.sort((a, b) => b.expiresMs - a.expiresMs);
+  return list;
+}
+
+/** Human-readable "4h 12m left" / "expired" for a grant's expiry. */
+export function formatTimeLeft(expiresMs) {
+  const ms = expiresMs - Date.now();
+  if (ms <= 0) return "expired";
+  const mins = Math.floor(ms / 60000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h >= 24) {
+    const d = Math.floor(h / 24);
+    return `${d}d ${h % 24}h left`;
+  }
+  return h > 0 ? `${h}h ${m}m left` : `${m}m left`;
 }
