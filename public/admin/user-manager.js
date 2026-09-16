@@ -8,6 +8,8 @@
 //   📋 Marker List   — table of all users, edit + active toggle
 //   ➕ Create Marker — form to create a new marker or admin
 //   🔑 Reset PIN     — select a user, issue a new PIN
+//   ⏪ Backdate Access — time-boxed permission for a marker to mark
+//                        attendance for a date they missed
 //   👤 My Profile    — current admin's details + change own PIN
 //
 // All auth operations delegate to shared/auth.js exports.
@@ -29,6 +31,12 @@ import {
   setUserActive,
   changeOwnPin,
 } from "../shared/auth.js";
+import {
+  grantBackdateAccess,
+  revokeBackdateAccess,
+  fetchAllBackdateGrants,
+  formatTimeLeft,
+} from "../shared/attendance.js";
 
 // ----------------------------------------------------------------
 // Entry point
@@ -41,6 +49,7 @@ export function mountUserManager(container, currentUser, currentProfile) {
     { id: "list",    label: "📋 Marker List" },
     { id: "create",  label: "➕ Create Marker" },
     { id: "reset",   label: "🔑 Reset PIN" },
+    { id: "backdate", label: "⏪ Backdate Access" },
     { id: "profile", label: "👤 My Profile" },
   ];
 
@@ -72,6 +81,7 @@ export function mountUserManager(container, currentUser, currentProfile) {
     if (activeSection === "list")    mountListSection(content);
     if (activeSection === "create")  mountCreateSection(content);
     if (activeSection === "reset")   mountResetSection(content);
+    if (activeSection === "backdate") mountBackdateSection(content, currentUser, currentProfile);
     if (activeSection === "profile") mountProfileSection(content, currentUser, currentProfile);
   }
 
@@ -942,6 +952,197 @@ function renderResetForm(el, users, selectedStaffId = "") {
       }
     });
   });
+}
+
+// ================================================================
+// SECTION: Backdate Access
+// ================================================================
+//
+// Markers can normally only mark TODAY — the roster screen is pinned
+// to the current date. When a marker misses a day (sick, no signal,
+// forgot), this screen hands them a time-boxed key: while the grant
+// is live they can pick ANY past date in the marker app and mark it,
+// including a date whose record was already finalized/locked.
+//
+// Deliberately time-boxed rather than permanent: the point is to
+// close a specific gap, not to leave history permanently editable.
+// Expiry is enforced in firestore.rules too, so a marker who leaves
+// the app open can't keep writing past the window.
+
+const BACKDATE_DURATIONS = [
+  { hours: 6,  label: "6 hours" },
+  { hours: 12, label: "12 hours" },
+  { hours: 24, label: "24 hours (default)" },
+  { hours: 48, label: "48 hours" },
+  { hours: 72, label: "3 days" },
+];
+
+async function mountBackdateSection(el, currentUser, currentProfile) {
+  el.innerHTML = `<p class="status">Loading…</p>`;
+
+  let users = [], grants = [];
+  try {
+    [users, grants] = await Promise.all([fetchAllActiveUsers(), fetchAllBackdateGrants()]);
+  } catch (err) {
+    el.innerHTML = `<div class="msg msg--err">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  renderBackdate(el, users, grants, currentUser, currentProfile);
+}
+
+function renderBackdate(el, users, grants, currentUser, currentProfile) {
+  const markers = users
+    .filter((u) => u.active !== false && (u.role === "marker" || !u.role))
+    .sort((a, b) => (a.staffId || "").localeCompare(b.staffId || ""));
+
+  const catLabel = { bus: "🚌 Bus Markers", class: "🎓 Class Markers", hostel: "🏠 Hostel Markers", other: "Markers" };
+  const byCat = {};
+  markers.forEach((u) => {
+    const key = ["bus", "class", "hostel"].includes(u.category) ? u.category : "other";
+    (byCat[key] ||= []).push(u);
+  });
+  const optGroups = ["bus", "class", "hostel", "other"]
+    .filter((k) => byCat[k]?.length)
+    .map((k) => `<optgroup label="${catLabel[k]}">${byCat[k]
+      .map((u) => `<option value="${escapeHtml(u.uid)}" data-staffid="${escapeHtml(u.staffId || "")}" data-name="${escapeHtml(u.name || "")}">${escapeHtml(u.staffId)} — ${escapeHtml(u.name)}</option>`)
+      .join("")}</optgroup>`)
+    .join("");
+
+  el.innerHTML = `
+    <h2 style="margin-bottom:var(--space-4);">Backdate Access</h2>
+    <div class="msg msg--warn" style="margin-bottom:var(--space-4);">
+      ⏪ While a grant is live, that marker can mark attendance for <strong>any past date</strong> in their own scopes —
+      including dates that were already finalized. Access ends automatically when the window expires.
+    </div>
+
+    <div class="card" style="max-width:520px; margin-bottom:var(--space-5);">
+      <div class="form-field">
+        <label class="form-label">Marker *</label>
+        <select id="bd-user" class="report-controls__input">
+          <option value="">— choose a marker —</option>
+          ${optGroups}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Access valid for *</label>
+        <select id="bd-hours" class="report-controls__input">
+          ${BACKDATE_DURATIONS.map((d) => `<option value="${d.hours}" ${d.hours === 24 ? "selected" : ""}>${d.label}</option>`).join("")}
+        </select>
+      </div>
+
+      <div id="bd-err" class="msg msg--err" style="display:none; margin-top:var(--space-3);"></div>
+      <div id="bd-ok"  class="msg msg--ok"  style="display:none; margin-top:var(--space-3);"></div>
+
+      <button class="btn" id="bd-submit" style="margin-top:var(--space-4);">Grant access</button>
+    </div>
+
+    <h3 style="margin-bottom:var(--space-3);">Grants</h3>
+    <div id="bd-list">${renderGrantTable(grants)}</div>
+  `;
+
+  const userEl   = el.querySelector("#bd-user");
+  const hoursEl  = el.querySelector("#bd-hours");
+  const submitEl = el.querySelector("#bd-submit");
+  const errEl    = el.querySelector("#bd-err");
+  const okEl     = el.querySelector("#bd-ok");
+
+  submitEl.addEventListener("click", async () => {
+    hideMsg(errEl); hideMsg(okEl);
+    const uid = userEl.value;
+    if (!uid) { showMsg(errEl, "Choose a marker first."); return; }
+    const opt = userEl.selectedOptions[0];
+    submitEl.disabled = true;
+    submitEl.textContent = "Granting…";
+    try {
+      await grantBackdateAccess({
+        uid,
+        staffId: opt.dataset.staffid,
+        name: opt.dataset.name,
+        hours: Number(hoursEl.value),
+        grantedBy: {
+          uid: currentUser.uid,
+          name: currentProfile?.name || "",
+          staffId: currentProfile?.staffId || "",
+        },
+      });
+      showMsg(okEl, `Access granted to ${opt.dataset.name}. Ask them to reopen the marker app — the option appears on their home screen.`);
+      await refreshGrants(el);
+    } catch (err) {
+      showMsg(errEl, err.message);
+    } finally {
+      submitEl.disabled = false;
+      submitEl.textContent = "Grant access";
+    }
+  });
+
+  attachGrantHandlers(el);
+}
+
+function renderGrantTable(grants) {
+  if (!grants.length) {
+    return `<p class="status">No backdate access has been granted yet.</p>`;
+  }
+  const rows = grants.map((g) => `
+    <tr class="${g.live ? "" : "bd-grant-row--expired"}">
+      <td><code>${escapeHtml(g.staffId || "—")}</code></td>
+      <td>${escapeHtml(g.name || "—")}</td>
+      <td><span class="bd-pill ${g.live ? "bd-pill--live" : "bd-pill--expired"}">${g.live ? formatTimeLeft(g.expiresMs) : "Expired"}</span></td>
+      <td>${escapeHtml(formatStamp(g.expiresMs))}</td>
+      <td>${escapeHtml(g.grantedBy?.name || "—")}</td>
+      <td>
+        ${g.live
+          ? `<button class="btn btn--sm btn--secondary bd-revoke" data-uid="${escapeHtml(g.uid)}" data-name="${escapeHtml(g.name || "")}">Revoke now</button>`
+          : `<button class="btn btn--sm btn--secondary bd-revoke" data-uid="${escapeHtml(g.uid)}" data-name="${escapeHtml(g.name || "")}">Clear</button>`}
+      </td>
+    </tr>
+  `).join("");
+
+  return `
+    <div class="student-table-wrap">
+      <table class="summary-table user-manager-table">
+        <thead>
+          <tr><th>Staff ID</th><th>Name</th><th>Status</th><th>Expires</th><th>Granted by</th><th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function attachGrantHandlers(el) {
+  el.querySelectorAll(".bd-revoke").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const name = btn.dataset.name || "this marker";
+      if (!confirm(`Remove backdate access for ${name}? They will be back to marking today only.`)) return;
+      btn.disabled = true;
+      btn.textContent = "…";
+      try {
+        await revokeBackdateAccess(btn.dataset.uid);
+        await refreshGrants(el);
+      } catch (err) {
+        alert(err.message);
+        btn.disabled = false;
+        btn.textContent = "Revoke now";
+      }
+    });
+  });
+}
+
+async function refreshGrants(el) {
+  const listEl = el.querySelector("#bd-list");
+  if (!listEl) return;
+  const grants = await fetchAllBackdateGrants();
+  listEl.innerHTML = renderGrantTable(grants);
+  attachGrantHandlers(el);
+}
+
+function formatStamp(ms) {
+  if (!ms) return "—";
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ================================================================
