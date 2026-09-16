@@ -25,6 +25,42 @@ service cloud.firestore {
         && myProfile().active == true;
     }
 
+    // ---- Backdate access helpers ----------------------------------
+    // A marker normally may only write attendance for TODAY. An admin
+    // can issue a time-boxed grant (backdateGrants/{uid}) that lifts
+    // both restrictions: any past date, and editing an already-locked
+    // record. Expiry is checked against request.time here so a stale
+    // open tab stops working the moment the window closes, regardless
+    // of what the client believes.
+    function liveGrant() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/backdateGrants/$(request.auth.uid))
+        && get(/databases/$(database)/documents/backdateGrants/$(request.auth.uid)).data.expiresAt > request.time;
+    }
+
+    // Today's date as YYYY-MM-DD in IST. request.time is UTC, so add
+    // 5h30m before pulling the parts — without this, every evening
+    // after 18:30 IST would look like "tomorrow" to the rule and a
+    // normal same-day save would be rejected as a backdate.
+    function istNow() {
+      return request.time + duration.value(330, 'm');
+    }
+    function pad2(n) {
+      return n < 10 ? '0' + string(n) : string(n);
+    }
+    function istToday() {
+      return string(istNow().year()) + '-' + pad2(istNow().month()) + '-' + pad2(istNow().day());
+    }
+
+    // FALLBACK: if istToday() ever misbehaves (e.g. a rules-language
+    // change to timestamp methods) and markers report that ordinary
+    // same-day saves are being denied, replace the two date checks in
+    // /attendanceRecords below with `true` — i.e. go back to:
+    //   allow create: if isSignedIn();
+    //   allow update: if isSignedIn() && (resource.data.locked != true || isAdmin() || liveGrant());
+    // That restores the pre-backdate behaviour (date enforced only by
+    // the app) while keeping the lock-override grant working.
+
     function isBootstrapped() {
       return exists(/databases/$(database)/documents/meta/bootstrap)
         && get(/databases/$(database)/documents/meta/bootstrap).data.bootstrapped == true;
@@ -135,12 +171,33 @@ service cloud.firestore {
     // edit it — this is the "show locked state clearly, allow admin
     // override" requirement from P9, enforced here from P4 onward so
     // the rule exists before any UI that depends on it.
+    // BACKDATING (added later): writes are now additionally pinned to
+    // TODAY's IST date unless the writer is an admin or holds a live
+    // backdateGrant. Previously any signed-in user could write any
+    // date; that was harmless while the UI only ever offered today,
+    // but the marker app can now target an arbitrary date, so the
+    // date has to be checked somewhere that the client can't bypass.
     match /attendanceRecords/{recordId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.locked != true || isAdmin());
+      allow create: if isSignedIn()
+                     && (isAdmin() || request.resource.data.date == istToday() || liveGrant());
+      allow update: if isSignedIn()
+                     && (resource.data.locked != true || isAdmin() || liveGrant())
+                     && (isAdmin() || resource.data.date == istToday() || liveGrant());
       allow delete: if false;
+    }
+
+    // ---- Backdate grants (one doc per marker uid) -------------------
+    // Issued and revoked only by an admin, from Users > Backdate
+    // Access. A marker may read ONLY their own doc (the marker app
+    // needs it to decide whether to show the \"mark a missed date\"
+    // option); `list` is admin-only so nobody can enumerate who
+    // currently has elevated access.
+    match /backdateGrants/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin();
     }
 
     // ---- Holidays (one doc per category+date, e.g. "class_2026-06-20") --
