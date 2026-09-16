@@ -100,6 +100,39 @@ Run this **once**, right after deploying, before sharing the URL:
 | Reset a marker's PIN | Users → find marker → **Reset PIN** |
 | Deactivate a marker | Users → find marker → **Deactivate** |
 | Change your own PIN | Users → **My Profile** → Change PIN |
+| Let a marker mark a missed date | Users → **⏪ Backdate Access** |
+
+---
+
+## Backdate access (marking a missed date)
+
+Markers can only ever mark **today** — the roster screen is pinned to
+the current date. When a marker misses a day, an admin opens
+**Users → ⏪ Backdate Access**, picks the marker and a window (6h /
+12h / 24h / 48h / 3 days) and taps **Grant access**.
+
+While the grant is live, that marker's app shows an *"⏪ Backdate
+access granted"* strip on the home/roster screen with a **Mark a
+missed date** button. Picking a date reloads the roster for that day,
+shows a loud amber *"Marking for DD-MM-YYYY (not today)"* banner, and
+saves against that date. Rules:
+
+- Any **past** date is allowed; future dates are rejected.
+- A date already marked as a **holiday** for that category still
+  blocks marking, exactly as today would.
+- A record that was already **finalized/locked** *can* be corrected —
+  the grant overrides the lock, and the marker sees a green notice
+  saying so.
+- Every backdated save stamps `backdated: true` and `backdateInfo`
+  (`markedOn`, `by`, `grantedBy`) on the record, so a catch-up mark is
+  distinguishable from a same-day one.
+- Access ends by itself at expiry, or immediately via **Revoke now**.
+
+Enforcement is in `firestore.rules`, not just the UI: writes to
+`attendanceRecords` must either be for today's IST date, come from an
+admin, or come from a uid with an unexpired `backdateGrants/{uid}`
+doc. The marker must reopen the app after a grant is issued (the
+grant is read once at mount).
 
 ---
 
