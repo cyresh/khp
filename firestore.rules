@@ -200,6 +200,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ---- Login activity (admin "Activity" screen) -------------------
+    // One doc per successful sign-in, written by shared/usage-stats.js
+    // from BOTH the marker and admin apps. Append-only audit trail: a
+    // signed-in user may only create a record for their own uid (never
+    // someone else's, and never backdated to a different one), nobody
+    // can edit or delete entries, and only an admin can read them back
+    // — a marker has no reason to see who else has been logging in.
+    match /loginEvents/{eventId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // ---- Holidays (one doc per category+date, e.g. "class_2026-06-20") --
     // Per-category calendar (bus/hostel/class each have their own), so
     // e.g. classes can be off while buses still run. Readable by any

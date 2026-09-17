@@ -104,6 +104,27 @@ Run this **once**, right after deploying, before sharing the URL:
 
 ---
 
+## Activity (who's using it, how often)
+
+Users → **📈 Activity** shows login frequency across everyone with an
+account — admins and managers included. Toggle **Today / This Week /
+This Month**, and you get:
+
+- how many of your active staff logged in at least once in that
+  window ("9 / 12 staff logged in")
+- a per-person breakdown: login count and how long ago they were
+  last seen
+- a day-by-day trend bar for the whole range
+
+It only tracks **sign-ins** (PIN or fingerprint), on both the marker
+and admin apps — not screen views or actions — so it stays a light
+usage signal rather than a full audit log. Each login writes one
+small `loginEvents` doc (`shared/usage-stats.js`); only an admin can
+read the collection back, and nobody — including admins — can edit
+or delete an entry once written.
+
+---
+
 ## Backdate access (marking a missed date)
 
 Markers can only ever mark **today** — the roster screen is pinned to
