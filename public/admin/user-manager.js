@@ -37,6 +37,11 @@ import {
   fetchAllBackdateGrants,
   formatTimeLeft,
 } from "../shared/attendance.js";
+import {
+  fetchLoginEvents,
+  rangeKeys,
+  aggregateLoginEvents,
+} from "../shared/usage-stats.js";
 
 // ----------------------------------------------------------------
 // Entry point
@@ -50,6 +55,7 @@ export function mountUserManager(container, currentUser, currentProfile) {
     { id: "create",  label: "➕ Create Marker" },
     { id: "reset",   label: "🔑 Reset PIN" },
     { id: "backdate", label: "⏪ Backdate Access" },
+    { id: "activity", label: "📈 Activity" },
     { id: "profile", label: "👤 My Profile" },
   ];
 
@@ -82,6 +88,7 @@ export function mountUserManager(container, currentUser, currentProfile) {
     if (activeSection === "create")  mountCreateSection(content);
     if (activeSection === "reset")   mountResetSection(content);
     if (activeSection === "backdate") mountBackdateSection(content, currentUser, currentProfile);
+    if (activeSection === "activity") mountActivitySection(content);
     if (activeSection === "profile") mountProfileSection(content, currentUser, currentProfile);
   }
 
@@ -1143,6 +1150,136 @@ function formatStamp(ms) {
   const d = new Date(ms);
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ================================================================
+// SECTION: Activity
+// ================================================================
+//
+// "Who is using this, and how often" — every successful sign-in
+// (PIN or fingerprint), on either the marker or admin app, gets one
+// loginEvents doc (see shared/usage-stats.js). This screen reads a
+// date range, aggregates it client-side, and shows: how many of the
+// active staff logged in at all, a per-person count + last-seen, and
+// a day-by-day trend across the range.
+//
+// Kept deliberately simple — this is a usage signal for the admin,
+// not a payroll/attendance-of-staff system, so "logged in N times"
+// is good enough; it doesn't try to measure session length or which
+// screens were used.
+
+const ACTIVITY_RANGES = [
+  { id: "today", label: "Today" },
+  { id: "week",  label: "This Week" },
+  { id: "month", label: "This Month" },
+];
+
+const ACTIVITY_CATEGORY_ICON = { bus: "🚌", class: "🎓", hostel: "🏠" };
+
+async function mountActivitySection(el) {
+  let range = "week";
+  let allUsers = [];
+  try {
+    allUsers = await fetchAllActiveUsers();
+  } catch (_) {
+    allUsers = [];
+  }
+
+  el.innerHTML = `<h2 style="margin-bottom:var(--space-4);">Activity</h2><p class="status">Loading…</p>`;
+  await renderActivity(el, range, allUsers);
+}
+
+async function renderActivity(el, range, allUsers) {
+  const { fromKey, toKey } = rangeKeys(range);
+
+  el.innerHTML = `
+    <h2 style="margin-bottom:var(--space-3);">Activity</h2>
+    <div class="activity-range-toggle" id="activity-range-toggle">
+      ${ACTIVITY_RANGES.map((r) => `<button data-range="${r.id}" class="${r.id === range ? "active" : ""}">${r.label}</button>`).join("")}
+    </div>
+    <div id="activity-body"><p class="status">Loading…</p></div>
+  `;
+
+  el.querySelectorAll("#activity-range-toggle button").forEach((btn) => {
+    btn.addEventListener("click", () => renderActivity(el, btn.dataset.range, allUsers));
+  });
+
+  const bodyEl = el.querySelector("#activity-body");
+  let events;
+  try {
+    events = await fetchLoginEvents(fromKey, toKey);
+  } catch (err) {
+    bodyEl.innerHTML = `<div class="msg msg--err">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const { users, daily, totalEvents, activeUserCount } = aggregateLoginEvents(events, fromKey, toKey);
+  const totalStaff = allUsers.filter((u) => u.active !== false).length;
+  const maxCount = users.reduce((m, u) => Math.max(m, u.count), 0) || 1;
+  const maxDaily = daily.reduce((m, d) => Math.max(m, d.count), 0) || 1;
+
+  const userRowsHtml = users.length
+    ? users.map((u) => `
+        <div class="activity-row">
+          <div>
+            <div class="activity-row__meta">
+              <span class="activity-row__name">${ACTIVITY_CATEGORY_ICON[u.category] || "👤"} ${escapeHtml(u.name || "—")} <span class="status" style="font-weight:400;">(${escapeHtml(u.staffId || "—")}${u.role === "admin" ? " · Admin" : u.role === "manager" ? " · Manager" : ""})</span></span>
+              <span class="activity-row__last">${u.lastAtMs ? formatRelativeTime(u.lastAtMs) : ""}</span>
+            </div>
+            <div class="progress-wrap" style="margin:2px 0 0;">
+              <div class="progress-bar" style="width:${Math.round((u.count / maxCount) * 100)}%;"></div>
+            </div>
+          </div>
+          <div class="activity-row__count">${u.count} login${u.count === 1 ? "" : "s"}</div>
+        </div>
+      `).join("")
+    : `<p class="status">No logins in this range yet.</p>`;
+
+  const dailyRowsHtml = daily.map((d) => `
+    <div class="activity-daily-row">
+      <span class="activity-daily-row__date">${formatShortDate(d.dateKey)}</span>
+      <div class="progress-wrap" style="margin:0;">
+        <div class="progress-bar" style="width:${Math.round((d.count / maxDaily) * 100)}%;"></div>
+      </div>
+      <span class="activity-daily-row__count">${d.count}</span>
+    </div>
+  `).join("");
+
+  bodyEl.innerHTML = `
+    <div class="activity-summary">
+      <div class="activity-summary__card">
+        <div class="activity-summary__num">${activeUserCount} / ${totalStaff}</div>
+        <div class="activity-summary__label">staff logged in</div>
+      </div>
+      <div class="activity-summary__card">
+        <div class="activity-summary__num">${totalEvents}</div>
+        <div class="activity-summary__label">total logins</div>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:var(--space-2);">By person</h3>
+    <div style="margin-bottom:var(--space-5);">${userRowsHtml}</div>
+
+    ${daily.length > 1 ? `<h3 style="margin-bottom:var(--space-2);">Daily trend</h3><div>${dailyRowsHtml}</div>` : ""}
+  `;
+}
+
+function formatRelativeTime(ms) {
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "just now";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return formatStamp(ms).split(" ")[0]; // fall back to dd-mm-yyyy
+}
+
+function formatShortDate(dateKey) {
+  const [, mm, dd] = dateKey.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${dd} ${months[Number(mm) - 1]}`;
 }
 
 // ================================================================
