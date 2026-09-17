@@ -1451,3 +1451,67 @@ p { margin: 0 0 var(--space-3) 0; }
 
 .bd-pill--live    { background: #dcfce7; color: #166534; }
 .bd-pill--expired { background: #f1f5f9; color: #475569; }
+
+/* Admin > Users > Activity */
+.activity-range-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+.activity-range-toggle button {
+  border: none;
+  background: var(--color-surface);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.activity-range-toggle button + button { border-left: 1px solid var(--color-border); }
+.activity-range-toggle button.active { background: var(--accent); color: #fff; }
+
+.activity-summary {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.activity-summary__card {
+  flex: 1 1 160px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.activity-summary__num { font-size: 1.6rem; font-weight: 700; }
+.activity-summary__label { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+.activity-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 5rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.activity-row__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  margin-bottom: 2px;
+}
+.activity-row__name { font-weight: 600; }
+.activity-row__last { color: var(--color-text-muted); white-space: nowrap; }
+.activity-row__count { text-align: right; font-weight: 700; white-space: nowrap; }
+
+.activity-daily-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0,1fr) 2.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 3px 0;
+  font-size: var(--font-size-sm);
+}
+.activity-daily-row__date { color: var(--color-text-muted); }
+.activity-daily-row__count { text-align: right; }

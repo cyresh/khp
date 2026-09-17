@@ -45,6 +45,7 @@ import {
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { logLoginEvent } from "./usage-stats.js";
 
 const APP_EMAIL_DOMAIN = "kongu-bus-app.local";
 const LOCKOUT_THRESHOLD = 5;
@@ -200,7 +201,9 @@ export async function loginWithPin(staffIdRaw, pin) {
       throw new Error("This account has been deactivated. Contact your admin.");
     }
     await clearAttempts(staffId);
-    return { uid: cred.user.uid, profile: profileSnap.data(), secret: { email, password } };
+    const profile = profileSnap.data();
+    logLoginEvent({ uid: cred.user.uid, profile, method: "pin" });
+    return { uid: cred.user.uid, profile, secret: { email, password } };
   } catch (err) {
     await recordFailedAttempt(staffId);
     throw new Error(GENERIC_LOGIN_ERROR);
@@ -225,7 +228,9 @@ export async function signInWithStoredSecret(email, password) {
     await signOut(auth);
     throw new Error("This account has been deactivated. Contact your admin.");
   }
-  return { uid: cred.user.uid, profile: profileSnap.data() };
+  const profile = profileSnap.data();
+  logLoginEvent({ uid: cred.user.uid, profile, method: "biometric" });
+  return { uid: cred.user.uid, profile };
 }
 
 export async function logout() {
